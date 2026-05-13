@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import SearchBar from '@/components/SearchBar';
 import ResultGrid from '@/components/ResultGrid';
+import SiteHeader from '@/components/SiteHeader';
 import { checkHealth, search, type Hit } from '@/lib/api';
 
 const ModelViewer = dynamic(() => import('@/components/ModelViewer'), { ssr: false });
@@ -66,24 +67,14 @@ export default function Page() {
 
   return (
     <main className="flex-1 flex flex-col">
-      <header className="sticky top-0 z-30 border-b border-ink-700/60 bg-ink-950/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 md:px-6">
-          <button
-            onClick={reset}
-            className="flex items-center gap-2 font-display text-lg text-ink-100 hover:text-ember-400 transition-colors"
-          >
-            <Mark />
-            <span className="tracking-tight">objaverse</span>
-            <span className="text-ember-500">/</span>
-            <span className="font-sans text-xs uppercase tracking-[0.22em] text-ink-300">
-              semantic search
-            </span>
-          </button>
+      <SiteHeader
+        onBrandClick={reset}
+        right={
           <div className="ml-auto w-full max-w-xl">
             <SearchBar initial={query} onSubmit={runSearch} loading={status === 'loading'} compact />
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <section className="mx-auto w-full max-w-7xl px-4 pt-6 pb-3 md:px-6">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -127,22 +118,18 @@ const SUGGESTED_CHIPS = ['viking helmet', 'art deco lamp', 'low-poly tree', 'med
 function Landing({ onSubmit, backendUp }: { onSubmit: (q: string) => void; backendUp: boolean | null }) {
   return (
     <main className="flex-1 flex flex-col">
-      <nav className="mx-auto flex w-full max-w-7xl items-center px-4 py-5 md:px-6">
-        <div className="flex items-center gap-2 font-display text-lg text-ink-100">
-          <Mark />
-          <span className="tracking-tight">objaverse</span>
-          <span className="text-ember-500">/</span>
-          <span className="font-sans text-xs uppercase tracking-[0.22em] text-ink-300">semantic search</span>
-        </div>
-        <div className="ml-auto flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-ink-400">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              backendUp == null ? 'bg-ink-500' : backendUp ? 'bg-emerald-500' : 'bg-red-500'
-            }`}
-          />
-          <span>{backendUp == null ? 'checking api' : backendUp ? 'api online' : 'api offline'}</span>
-        </div>
-      </nav>
+      <SiteHeader
+        right={
+          <div className="ml-auto flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-ink-400">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                backendUp == null ? 'bg-ink-500' : backendUp ? 'bg-emerald-500' : 'bg-red-500'
+              }`}
+            />
+            <span>{backendUp == null ? 'checking api' : backendUp ? 'api online' : 'api offline'}</span>
+          </div>
+        }
+      />
 
       <div className="flex-1 flex flex-col items-center justify-center px-4 pb-16 pt-10 md:pt-0">
         <div className="w-full max-w-3xl text-center animate-rise-in">
@@ -244,15 +231,3 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function Mark() {
-  return (
-    <span className="relative grid h-7 w-7 place-items-center rounded-md border border-ember-500/40 bg-ember-500/10">
-      <span className="absolute inset-0 rounded-md bg-ember-500/20 blur-md" aria-hidden />
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff7a1a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M12 2 3 7l9 5 9-5-9-5Z" />
-        <path d="m3 17 9 5 9-5" />
-        <path d="m3 12 9 5 9-5" />
-      </svg>
-    </span>
-  );
-}
