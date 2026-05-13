@@ -1,48 +1,47 @@
-"""Stage 3: multi-view rendering of each glb.
+"""Stage 3: multi-view rendering of each glb (PyVista / VTK backend).
 
-We use PyRender in headless (EGL) mode. For each model we:
+PyVista wraps VTK, which has reliable offscreen rendering on Windows,
+macOS, and Linux without needing EGL/OSMesa system libs. For each
+model we:
   1. load the glb with trimesh, normalize to a unit bounding sphere,
   2. place N cameras evenly on a tilted circle around it,
-  3. render each view to an RGB uint8 array.
+  3. render each view to an RGB uint8 array via a single off_screen
+     plotter that's reused across views.
 
-The rendered views become a Daft column of nested tensors, which the
-embedding stage consumes batch-wise. The first view is also written to
-disk as a thumbnail PNG so the frontend can show it without re-rendering.
+Heavy imports (pyvista, trimesh) are deferred to function bodies so
+downstream modules (embed, index, server) can be imported on machines
+that don't have the rendering deps available.
 """
 
 from __future__ import annotations
-
-import os
-
-# Headless GL must be selected before pyrender is imported.
-os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
 from pathlib import Path
 
 import daft
 import numpy as np
-import pyrender
-import trimesh
-from PIL import Image
 
-from .config import RENDER_BG_COLOR, RENDER_SIZE, RENDER_VIEWS, THUMBS_DIR
+from .config import RENDER_SIZE, RENDER_VIEWS, THUMBS_DIR
 from .download import load_with_paths
 
 
 # ---------- pure rendering helpers ------------------------------------------------
 
 
-def _load_mesh(glb_path: str) -> trimesh.Trimesh:
-    """Load a glb, flatten its scene to a single mesh, normalize to a unit sphere."""
+def _load_mesh(glb_path: str):
+    """Load a glb, collapse its scene to a single Trimesh, normalize to a unit sphere."""
+    import trimesh
+
     obj = trimesh.load(glb_path, force="scene")
     if isinstance(obj, trimesh.Scene):
-        if len(obj.geometry) == 0:
-            raise ValueError(f"empty scene: {glb_path}")
-        mesh = trimesh.util.concatenate(
-            [g for g in obj.dump() if isinstance(g, trimesh.Trimesh)]
-        )
+        meshes = [g for g in obj.geometry.values() if isinstance(g, trimesh.Trimesh)]
+        if not meshes:
+            raise ValueError(f"no mesh geometry in {glb_path}")
+        mesh = trimesh.util.concatenate(meshes)
     else:
         mesh = obj
+
+    if not isinstance(mesh, trimesh.Trimesh):
+        raise ValueError(f"unsupported geometry type for {glb_path}: {type(mesh).__name__}")
 
     mesh.apply_translation(-mesh.centroid)
     radius = float(np.linalg.norm(mesh.bounds, axis=1).max())
@@ -51,31 +50,29 @@ def _load_mesh(glb_path: str) -> trimesh.Trimesh:
     return mesh
 
 
-def _camera_poses(n_views: int, radius: float = 2.2, elevation_deg: float = 20.0) -> list[np.ndarray]:
-    """N evenly-spaced cameras around the object on a tilted circle, looking at the origin."""
+def _to_pyvista(tm):
+    """Convert a trimesh.Trimesh to a pyvista.PolyData without relying on optional interop."""
+    import pyvista as pv
+
+    faces = np.asarray(tm.faces, dtype=np.int64)
+    # PyVista expects a flat array of [n_verts, v0, v1, ..., n_verts, v0, v1, ...]
+    flat = np.hstack([np.full((faces.shape[0], 1), 3, dtype=np.int64), faces]).ravel()
+    return pv.PolyData(np.asarray(tm.vertices, dtype=np.float64), flat)
+
+
+def _camera_positions(n_views: int, radius: float = 2.4, elevation_deg: float = 18.0) -> list[tuple[float, float, float]]:
+    """N evenly-spaced camera eye positions on a tilted circle around the origin."""
     elev = np.deg2rad(elevation_deg)
-    poses = []
+    positions = []
     for i in range(n_views):
         theta = 2.0 * np.pi * i / n_views
-        eye = np.array(
-            [
-                radius * np.cos(elev) * np.cos(theta),
-                radius * np.sin(elev),
-                radius * np.cos(elev) * np.sin(theta),
-            ]
+        eye = (
+            radius * np.cos(elev) * np.cos(theta),
+            radius * np.sin(elev),
+            radius * np.cos(elev) * np.sin(theta),
         )
-        forward = -eye / np.linalg.norm(eye)
-        up_hint = np.array([0.0, 1.0, 0.0])
-        right = np.cross(forward, up_hint)
-        right /= np.linalg.norm(right) + 1e-8
-        up = np.cross(right, forward)
-        pose = np.eye(4)
-        pose[:3, 0] = right
-        pose[:3, 1] = up
-        pose[:3, 2] = -forward
-        pose[:3, 3] = eye
-        poses.append(pose)
-    return poses
+        positions.append(eye)
+    return positions
 
 
 def render_views(
@@ -85,29 +82,28 @@ def render_views(
     thumb_path: Path | None = None,
 ) -> list[np.ndarray]:
     """Render `n_views` RGB images of the model. Returns a list of HxWx3 uint8 arrays."""
-    mesh = _load_mesh(glb_path)
+    import pyvista as pv
+    from PIL import Image
 
-    scene = pyrender.Scene(bg_color=RENDER_BG_COLOR, ambient_light=(0.4, 0.4, 0.4))
-    scene.add(pyrender.Mesh.from_trimesh(mesh, smooth=False))
+    mesh = _to_pyvista(_load_mesh(glb_path))
 
-    light = pyrender.DirectionalLight(color=np.ones(3), intensity=3.0)
-    scene.add(light, pose=np.eye(4))
-
-    cam = pyrender.PerspectiveCamera(yfov=np.pi / 4.0, aspectRatio=1.0)
-    cam_node = scene.add(cam, pose=np.eye(4))
-
-    renderer = pyrender.OffscreenRenderer(viewport_width=size, viewport_height=size)
+    plotter = pv.Plotter(off_screen=True, window_size=(size, size))
+    plotter.set_background("white")
+    plotter.add_mesh(mesh, color=(0.78, 0.78, 0.82), smooth_shading=True, specular=0.3)
+    plotter.enable_lightkit()
     try:
         views: list[np.ndarray] = []
-        for i, pose in enumerate(_camera_poses(n_views)):
-            scene.set_pose(cam_node, pose=pose)
-            color, _ = renderer.render(scene)
-            views.append(color)
+        for i, eye in enumerate(_camera_positions(n_views)):
+            plotter.camera_position = [eye, (0.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+            plotter.camera.zoom(1.1)
+            img = plotter.screenshot(return_img=True)  # (H, W, 3 or 4) uint8
+            img = np.asarray(img)[..., :3]
+            views.append(img.astype(np.uint8))
             if i == 0 and thumb_path is not None:
-                Image.fromarray(color).save(thumb_path)
+                Image.fromarray(img).save(thumb_path)
         return views
     finally:
-        renderer.delete()
+        plotter.close()
 
 
 # ---------- Daft UDF --------------------------------------------------------------
@@ -115,7 +111,7 @@ def render_views(
 
 @daft.udf(return_dtype=daft.DataType.python())
 def render_views_udf(uid_col, glb_path_col):
-    """Render N views per row. Returns a Python list per row (n_views, H, W, 3) uint8."""
+    """Render N views per row. Returns a (n_views, H, W, 3) uint8 array per row, or None on failure."""
     out = []
     for uid, glb_path in zip(uid_col.to_pylist(), glb_path_col.to_pylist()):
         try:

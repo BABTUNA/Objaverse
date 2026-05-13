@@ -17,10 +17,11 @@ dependencies = [
   # Objaverse dataset
   "objaverse>=0.1.7",
 
-  # 3D rendering
+  # 3D rendering — PyVista/VTK works headlessly on Windows, macOS, and Linux
+  # with no extra system libs (unlike pyrender, which needs EGL/OSMesa).
   "trimesh>=4.0",
-  "pyrender>=0.1.45",
-  "pyglet<2.0",          # pyrender requires legacy pyglet
+  "pyvista>=0.43",
+  "vtk>=9.3",
   "Pillow>=10.0",
 
   # Embeddings
