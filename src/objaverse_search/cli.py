@@ -59,6 +59,19 @@ def index() -> None:
 
 
 @app.command()
+def project(
+    n_neighbors: int = typer.Option(25, help="UMAP n_neighbors."),
+    min_dist: float = typer.Option(0.15, help="UMAP min_dist."),
+    seed: int = typer.Option(42, help="UMAP random_state."),
+) -> None:
+    """UMAP-reduce embeddings to 3D for the atlas view."""
+    from . import projection as pr
+
+    console.print("[bold cyan]→[/] projecting embeddings to 3D (UMAP)")
+    pr.build_projection(n_neighbors=n_neighbors, min_dist=min_dist, seed=seed)
+
+
+@app.command()
 def serve(
     host: str = "127.0.0.1",
     port: int = 8000,

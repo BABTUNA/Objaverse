@@ -34,6 +34,9 @@ dependencies = [
   # Vector store
   "lancedb>=0.10",
 
+  # Dimensionality reduction for the latent-space atlas
+  "umap-learn>=0.5",
+
   # API
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
