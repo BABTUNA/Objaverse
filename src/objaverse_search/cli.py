@@ -52,8 +52,10 @@ def embed(batch_size: int = typer.Option(64, help="CLIP batch size.")) -> None:
 @app.command()
 def index() -> None:
     """Write embeddings + metadata to LanceDB."""
+    from . import index as ix
+
     console.print("[bold cyan]→[/] writing LanceDB index")
-    raise typer.Exit(code=0)
+    ix.build_index()
 
 
 @app.command()
