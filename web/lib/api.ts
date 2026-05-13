@@ -14,6 +14,27 @@ export type SearchResponse = {
   hits: Hit[];
 };
 
+export type AtlasPoint = {
+  uid: string;
+  category: string;
+  x: number;
+  y: number;
+  z: number;
+  thumb_url: string;
+};
+
+export type AtlasResponse = {
+  count: number;
+  points: AtlasPoint[];
+};
+
+export class AtlasUnavailableError extends Error {
+  constructor(public detail: string) {
+    super(detail);
+    this.name = 'AtlasUnavailableError';
+  }
+}
+
 export function resolveAssetUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const clean = path.startsWith('/') ? path : `/${path}`;
@@ -28,6 +49,18 @@ export async function search(query: string, k = 24, signal?: AbortSignal): Promi
   }
   const data = (await res.json()) as SearchResponse;
   return data;
+}
+
+export async function getAtlas(signal?: AbortSignal): Promise<AtlasResponse> {
+  const res = await fetch(`${API_BASE}/atlas`, { signal, cache: 'no-store' });
+  if (res.status === 404) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new AtlasUnavailableError(body.detail ?? 'projection not built');
+  }
+  if (!res.ok) {
+    throw new Error(`Atlas fetch failed (${res.status})`);
+  }
+  return (await res.json()) as AtlasResponse;
 }
 
 export async function checkHealth(signal?: AbortSignal): Promise<boolean> {
