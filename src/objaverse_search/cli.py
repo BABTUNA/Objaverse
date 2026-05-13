@@ -59,7 +59,11 @@ def index() -> None:
 
 
 @app.command()
-def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    reload: bool = typer.Option(False, help="Auto-reload on source change."),
+) -> None:
     """Run the FastAPI search backend."""
     import uvicorn
 
@@ -67,7 +71,8 @@ def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
         "objaverse_search.server:app",
         host=host,
         port=port,
-        reload=True,
+        reload=reload,
+        reload_dirs=["src/objaverse_search"] if reload else None,
     )
 
 
