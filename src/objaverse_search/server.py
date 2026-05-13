@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from .config import THUMBS_DIR
 from .embed import embed_text
 from .index import search as ann_search
+from .projection import load_projection
 
 app = FastAPI(title="Objaverse Search", version="0.1.0")
 
@@ -43,6 +44,20 @@ class Hit(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     hits: list[Hit]
+
+
+class AtlasPoint(BaseModel):
+    uid: str
+    category: str
+    x: float
+    y: float
+    z: float
+    thumb_url: str
+
+
+class AtlasResponse(BaseModel):
+    count: int
+    points: list[AtlasPoint]
 
 
 @app.get("/healthz")
@@ -73,6 +88,26 @@ def search(q: str = Query(..., min_length=1), k: int = Query(24, ge=1, le=100)) 
             )
         )
     return SearchResponse(query=q, hits=hits)
+
+
+@app.get("/atlas", response_model=AtlasResponse)
+def atlas() -> AtlasResponse:
+    """Return the full latent-space projection as 3D points."""
+    rows = load_projection()
+    if not rows:
+        raise HTTPException(status_code=404, detail="projection not built; run `objaverse-search project`")
+    points = [
+        AtlasPoint(
+            uid=r["uid"],
+            category=r.get("category", ""),
+            x=r["x"],
+            y=r["y"],
+            z=r["z"],
+            thumb_url=f"/thumb/{r['uid']}",
+        )
+        for r in rows
+    ]
+    return AtlasResponse(count=len(points), points=points)
 
 
 @app.get("/thumb/{uid}")
