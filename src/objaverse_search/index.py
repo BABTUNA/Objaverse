@@ -35,6 +35,11 @@ def _to_arrow(df) -> pa.Table:
     return arrow_tbl
 
 
+# LanceDB's IVF_PQ trainer needs at least 256 samples per sub-quantizer.
+# Below that, brute-force scan is fast enough and produces exact results.
+PQ_MIN_ROWS = 256
+
+
 def build_index() -> None:
     df = load_embeddings()
     table = _to_arrow(df)
@@ -45,15 +50,21 @@ def build_index() -> None:
         db.drop_table(LANCE_TABLE)
     tbl = db.create_table(LANCE_TABLE, data=table)
 
-    # ~sqrt(n) partitions is the usual IVF heuristic; cap for tiny tables.
-    n_partitions = max(8, int(table.num_rows**0.5))
-    tbl.create_index(
-        metric="cosine",
-        vector_column_name="embedding",
-        num_partitions=n_partitions,
-        num_sub_vectors=64,
-    )
-    console.print(f"[green]✓[/] indexed {LANCE_TABLE} at {LANCEDB_DIR}")
+    if table.num_rows < PQ_MIN_ROWS:
+        console.print(
+            f"[yellow]→[/] {table.num_rows} rows < {PQ_MIN_ROWS}; "
+            "skipping ANN index, queries will run as exact cosine scan"
+        )
+    else:
+        n_partitions = max(8, int(table.num_rows**0.5))
+        tbl.create_index(
+            metric="cosine",
+            vector_column_name="embedding",
+            num_partitions=n_partitions,
+            num_sub_vectors=64,
+        )
+        console.print(f"[green]✓[/] built IVF_PQ index ({n_partitions} partitions)")
+    console.print(f"[green]✓[/] table ready at {LANCEDB_DIR}")
 
 
 def open_table():
