@@ -143,7 +143,7 @@ def run(limit: int = 0) -> None:
         "views",
         render_views_udf(daft.col("uid"), daft.col("glb_path")),
     )
-    df = df.where(daft.col("views").is_not_null())
+    df = df.where(~daft.col("views").is_null())
 
     df.write_parquet(str(RENDERS_PARQUET))
     console.print(f"[green]✓[/] wrote {RENDERS_PARQUET}")
