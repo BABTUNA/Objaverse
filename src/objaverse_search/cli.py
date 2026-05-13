@@ -12,8 +12,12 @@ console = Console()
 @app.command()
 def metadata(limit: int = typer.Option(0, help="Only load N entries (0 = all).")) -> None:
     """Fetch Objaverse-LVIS metadata into a Daft DataFrame."""
+    from . import metadata as md
+
     console.print("[bold cyan]→[/] loading objaverse-lvis metadata")
-    raise typer.Exit(code=0)
+    df = md.build_metadata_df(limit=limit)
+    md.save_metadata(df)
+    df.show(5)
 
 
 @app.command()
