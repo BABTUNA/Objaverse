@@ -35,8 +35,10 @@ def download(
 @app.command()
 def render(limit: int = typer.Option(0, help="Only render N models (0 = all).")) -> None:
     """Render multi-view images for each model."""
+    from . import render as rd
+
     console.print("[bold cyan]→[/] rendering multi-view images")
-    raise typer.Exit(code=0)
+    rd.run(limit=limit)
 
 
 @app.command()
