@@ -44,8 +44,9 @@ def render(limit: int = typer.Option(0, help="Only render N models (0 = all)."))
 @app.command()
 def embed(batch_size: int = typer.Option(64, help="CLIP batch size.")) -> None:
     """CLIP-embed rendered views, mean-pool per model."""
-    console.print("[bold cyan]→[/] embedding views with CLIP")
-    raise typer.Exit(code=0)
+    from . import embed as eb
+
+    eb.run(batch_size=batch_size)
 
 
 @app.command()
