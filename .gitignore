@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+.python-version
+
+# uv / pip
+.uv/
+pip-wheel-metadata/
+
+# Data + caches (these get huge)
+data/raw/
+data/renders/
+data/embeddings/
+data/lancedb/
+data/thumbnails/
+*.glb
+*.parquet
+*.lance
+~/.objaverse/
+
+# Models / checkpoints
+*.pt
+*.pth
+*.safetensors
+*.bin
+!**/package-lock.json
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.log
+.npm/
+.pnpm-store/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
