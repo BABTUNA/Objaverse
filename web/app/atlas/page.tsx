@@ -75,7 +75,7 @@ export default function AtlasPage() {
   const showCapNote = data ? data.points.length > 500 : false;
 
   return (
-    <main className="relative flex-1 flex flex-col">
+    <main className="relative h-screen flex flex-col overflow-hidden">
       <SiteHeader
         floating
         right={
