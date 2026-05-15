@@ -68,7 +68,11 @@ def render_views(
     from PIL import Image
 
     plotter = pv.Plotter(off_screen=True, window_size=(size, size))
-    plotter.set_background("white")
+    # Default background stays — `screenshot(transparent_background=True)` asks
+    # VTK for an RGBA frame regardless. We composite over white for the CLIP
+    # inputs, but persist the RGBA buffer as the UI thumbnail so it sits cleanly
+    # against any background (the atlas billboards in particular look like
+    # square stickers on dark space without an alpha channel).
     try:
         plotter.import_gltf(str(glb_path))
     except Exception:
@@ -92,11 +96,27 @@ def render_views(
             eye = _camera_eye(center, radius, theta)
             plotter.camera_position = [eye, center, (0.0, 1.0, 0.0)]
             plotter.camera.zoom(1.05)
-            img = plotter.screenshot(return_img=True)
-            img = np.asarray(img)[..., :3].astype(np.uint8)
-            views.append(img)
+            rgba = np.asarray(
+                plotter.screenshot(return_img=True, transparent_background=True)
+            )
+            if rgba.shape[-1] == 3:
+                rgba = np.concatenate(
+                    [rgba, np.full(rgba.shape[:2] + (1,), 255, dtype=np.uint8)],
+                    axis=-1,
+                )
+            rgba = rgba.astype(np.uint8)
+
+            # Composite the RGBA frame onto a white canvas for CLIP: the encoder
+            # expects 3 channels, and transparent-as-black would inject a strong
+            # spurious feature outside the object silhouette.
+            alpha = rgba[..., 3:4].astype(np.float32) / 255.0
+            rgb_white = (
+                rgba[..., :3].astype(np.float32) * alpha + 255.0 * (1.0 - alpha)
+            ).astype(np.uint8)
+            views.append(rgb_white)
+
             if i == 0 and thumb_path is not None:
-                Image.fromarray(img).save(thumb_path)
+                Image.fromarray(rgba, mode="RGBA").save(thumb_path)
         return views
     finally:
         plotter.close()
