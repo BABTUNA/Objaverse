@@ -66,7 +66,7 @@ export default function AtlasPage() {
       category: p.category,
       score: 1,
       thumb_url: p.thumb_url,
-      glb_url: `/glb/${p.uid}`,
+      glb_url: `/model/${p.uid}`,
     });
   }, []);
 
