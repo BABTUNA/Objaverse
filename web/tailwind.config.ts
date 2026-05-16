@@ -5,17 +5,20 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Warm paper palette. Keys preserve the prior dark-theme semantics
+        // (950 = canvas, 100 = primary text) so existing components keep
+        // working — only the hex values are inverted to a light scale.
         ink: {
-          950: '#0a0a0f',
-          900: '#0e0e15',
-          800: '#15151f',
-          700: '#1c1c28',
-          600: '#272735',
-          500: '#3a3a4c',
-          400: '#5a5a72',
-          300: '#8a8aa3',
-          200: '#b8b8cc',
-          100: '#e6e6ef',
+          950: '#faf7f1',
+          900: '#f2ede2',
+          800: '#e5dfd1',
+          700: '#cfc6b1',
+          600: '#aea58e',
+          500: '#7e7561',
+          400: '#5d5544',
+          300: '#3f392c',
+          200: '#2a2620',
+          100: '#161310',
         },
         ember: {
           DEFAULT: '#ff7a1a',
