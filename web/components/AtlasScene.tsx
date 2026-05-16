@@ -18,12 +18,14 @@ const INTRO_DURATION_MS = 1200;
 const INTRO_START: [number, number, number] = [CLOUD_SCALE * 3.4, CLOUD_SCALE * 2.2, CLOUD_SCALE * 3.4];
 const INTRO_END: [number, number, number] = [CLOUD_SCALE * 1.4, CLOUD_SCALE * 0.9, CLOUD_SCALE * 1.4];
 
-// Marker color palette — uniform amber by default, green on hover/select per
-// the command-center aesthetic.
-const COLOR_DEFAULT = new THREE.Color('#facc15');
-const COLOR_DIM = new THREE.Color('#3f2d05');
-const COLOR_HOVER = new THREE.Color('#34d399');
-const COLOR_SELECT = new THREE.Color('#34d399');
+// Marker color palette — deeper amber against the warm paper background
+// for legibility, emerald for hover/select, soft tan for the dimmed state
+// (close to the canvas so non-matches fade into the page rather than
+// reading as dark blobs the way pure black would on cream).
+const COLOR_DEFAULT = new THREE.Color('#d97706');
+const COLOR_DIM = new THREE.Color('#d6cba0');
+const COLOR_HOVER = new THREE.Color('#059669');
+const COLOR_SELECT = new THREE.Color('#059669');
 
 type Props = {
   points: AtlasPoint[];
@@ -63,8 +65,8 @@ export default function AtlasScene({
       dpr={[1, 2]}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
     >
-      <color attach="background" args={['#08080c']} />
-      <fog attach="fog" args={['#0a0a0f', CLOUD_SCALE * 1.4, CLOUD_SCALE * 4.0]} />
+      <color attach="background" args={['#f2ede2']} />
+      <fog attach="fog" args={['#faf7f1', CLOUD_SCALE * 1.4, CLOUD_SCALE * 4.0]} />
 
       <ambientLight intensity={0.8} />
       <directionalLight position={[8, 12, 6]} intensity={0.4} />
@@ -103,7 +105,7 @@ function GlobeShell() {
   return (
     <>
       <Sphere args={[CLOUD_SCALE * 1.05, 32, 24]}>
-        <meshBasicMaterial color="#1a2a35" wireframe transparent opacity={0.18} depthWrite={false} />
+        <meshBasicMaterial color="#aea58e" wireframe transparent opacity={0.25} depthWrite={false} />
       </Sphere>
       <Sphere args={[CLOUD_SCALE * 1.04, 64, 1]}>
         <meshBasicMaterial color="#34d399" wireframe transparent opacity={0.06} depthWrite={false} />

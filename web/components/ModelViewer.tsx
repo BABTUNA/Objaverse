@@ -76,13 +76,13 @@ export default function ModelViewer({ hit, onClose }: Props) {
           </div>
         </header>
 
-        <div className="relative flex-1 min-h-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_50%,#15151f_0%,#08080c_100%)]">
+        <div className="relative flex-1 min-h-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_50%,#faf7f1_0%,#e5dfd1_100%)]">
           <Canvas
             camera={{ position: [2.4, 1.6, 2.6], fov: 38 }}
             dpr={[1, 2]}
             gl={{ antialias: true, preserveDrawingBuffer: false }}
           >
-            <color attach="background" args={['#0a0a0f']} />
+            <color attach="background" args={['#f2ede2']} />
             <ambientLight intensity={0.35} />
             <directionalLight position={[4, 6, 3]} intensity={0.8} />
             <Suspense fallback={<LoadingFallback />}>
@@ -143,7 +143,7 @@ function ContactShadow() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.0, 0]} receiveShadow>
       <circleGeometry args={[3, 64]} />
-      <meshBasicMaterial color="#000000" transparent opacity={0.35} />
+      <meshBasicMaterial color="#161310" transparent opacity={0.18} />
     </mesh>
   );
 }
