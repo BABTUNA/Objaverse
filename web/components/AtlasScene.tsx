@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, type MutableRefObject, type Ref } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, Sphere } from '@react-three/drei';
+import { Billboard, OrbitControls, Sphere, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AtlasPoint } from '@/lib/api';
 
@@ -363,7 +363,63 @@ function Markers({
           </group>
         );
       })()}
+
+      <MarkerLabels points={points} matches={matches} selectedUid={selectedUid} />
     </>
+  );
+}
+
+// Always-visible category labels next to each marker. Billboarded so they
+// stay legible regardless of camera angle. Capped at LABEL_CAP to keep
+// troika-text mesh count bounded at large N — once the cloud grows past
+// the cap we'd want to fall back to category centroid labels instead.
+const LABEL_CAP = 250;
+
+function MarkerLabels({
+  points,
+  matches,
+  selectedUid,
+}: {
+  points: AtlasPoint[];
+  matches: Set<string> | null;
+  selectedUid: string | null;
+}) {
+  const visible = points.length <= LABEL_CAP ? points : points.slice(0, LABEL_CAP);
+  return (
+    <group>
+      {visible.map((p) => {
+        const inMatch = matches ? matches.has(p.uid) : true;
+        const isSelected = p.uid === selectedUid;
+        const color = isSelected ? '#059669' : inMatch ? '#2a2620' : '#cfc6b1';
+        const opacity = inMatch ? 1 : 0.5;
+        const fontSize = isSelected ? 0.22 : 0.15;
+        return (
+          <Billboard
+            key={p.uid}
+            position={[
+              p.x * CLOUD_SCALE,
+              p.y * CLOUD_SCALE + 0.32,
+              p.z * CLOUD_SCALE,
+            ]}
+          >
+            <Text
+              fontSize={fontSize}
+              color={color}
+              anchorX="center"
+              anchorY="bottom"
+              outlineWidth={0.012}
+              outlineColor="#faf7f1"
+              outlineOpacity={0.95}
+              fillOpacity={opacity}
+              maxWidth={3.5}
+              overflowWrap="break-word"
+            >
+              {p.category}
+            </Text>
+          </Billboard>
+        );
+      })}
+    </group>
   );
 }
 
