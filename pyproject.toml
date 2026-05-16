@@ -46,6 +46,7 @@ dependencies = [
   "tqdm",
   "typer>=0.12",
   "rich>=13.7",
+  "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

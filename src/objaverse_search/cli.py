@@ -72,6 +72,15 @@ def project(
 
 
 @app.command()
+def bench(n: int = typer.Option(20, help="Number of models to benchmark.")) -> None:
+    """Benchmark Daft vs naive render on N downloaded models."""
+    from . import bench as bn
+
+    console.print("[bold cyan]→[/] benchmarking render: naive vs Daft")
+    bn.run(n=n)
+
+
+@app.command()
 def serve(
     host: str = "127.0.0.1",
     port: int = 8000,
