@@ -35,6 +35,40 @@ export class AtlasUnavailableError extends Error {
   }
 }
 
+export type Hardware = {
+  platform: string;
+  cpu: string;
+  cpu_logical_cores: number;
+  cpu_physical_cores: number;
+  ram_gb: number;
+  gpu: string | null;
+};
+
+export type BenchmarkRunSummary = {
+  elapsed_seconds: number;
+  models_rendered: number;
+  models_failed: number;
+  throughput_models_per_sec: number;
+};
+
+export type BenchmarkResults = {
+  ran_at: string;
+  n_models: number;
+  hardware: Hardware;
+  render: {
+    naive: BenchmarkRunSummary;
+    daft: BenchmarkRunSummary;
+    speedup_x: number;
+  };
+};
+
+export class BenchmarksUnavailableError extends Error {
+  constructor(public detail: string) {
+    super(detail);
+    this.name = 'BenchmarksUnavailableError';
+  }
+}
+
 export function resolveAssetUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const clean = path.startsWith('/') ? path : `/${path}`;
@@ -61,6 +95,18 @@ export async function getAtlas(signal?: AbortSignal): Promise<AtlasResponse> {
     throw new Error(`Atlas fetch failed (${res.status})`);
   }
   return (await res.json()) as AtlasResponse;
+}
+
+export async function getBenchmarks(signal?: AbortSignal): Promise<BenchmarkResults> {
+  const res = await fetch(`${API_BASE}/benchmarks`, { signal, cache: 'no-store' });
+  if (res.status === 404) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new BenchmarksUnavailableError(body.detail ?? 'no benchmark results');
+  }
+  if (!res.ok) {
+    throw new Error(`Benchmarks fetch failed (${res.status})`);
+  }
+  return (await res.json()) as BenchmarkResults;
 }
 
 export async function checkHealth(signal?: AbortSignal): Promise<boolean> {
