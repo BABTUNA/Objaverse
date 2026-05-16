@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import SiteHeader from '@/components/SiteHeader';
 import {
   AtlasUnavailableError,
   getAtlas,
@@ -10,6 +9,10 @@ import {
   type AtlasResponse,
   type Hit,
 } from '@/lib/api';
+import { buildCategoryStats, type RecentPick } from '@/lib/atlas-data';
+import DashboardTopBar from '@/components/atlas/DashboardTopBar';
+import DashboardSidebar from '@/components/atlas/DashboardSidebar';
+import HoverTooltip from '@/components/atlas/HoverTooltip';
 
 const AtlasScene = dynamic(() => import('@/components/AtlasScene'), {
   ssr: false,
@@ -18,17 +21,24 @@ const AtlasScene = dynamic(() => import('@/components/AtlasScene'), {
 const ModelViewer = dynamic(() => import('@/components/ModelViewer'), { ssr: false });
 
 type Status = 'loading' | 'ready' | 'empty' | 'error';
-
 type HoverState = { point: AtlasPoint; screen: { x: number; y: number } } | null;
+
+const RECENT_CAP = 8;
 
 export default function AtlasPage() {
   const [data, setData] = useState<AtlasResponse | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [emptyDetail, setEmptyDetail] = useState<string | null>(null);
+
   const [filter, setFilter] = useState('');
+  const [lockedCategories, setLockedCategories] = useState<Set<string>>(new Set());
+
   const [hover, setHover] = useState<HoverState>(null);
-  const [picked, setPicked] = useState<Hit | null>(null);
+  const [selected, setSelected] = useState<Hit | null>(null);
+  const [viewerHit, setViewerHit] = useState<Hit | null>(null);
+  const [recent, setRecent] = useState<RecentPick[]>([]);
+
   const reqRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -59,125 +69,189 @@ export default function AtlasPage() {
   }, [load]);
 
   const onPick = useCallback((p: AtlasPoint) => {
-    // Synthesize a Hit so ModelViewer renders the GLB. Score is faux; the
-    // viewer only uses it for badge text.
-    setPicked({
+    const hit: Hit = {
       uid: p.uid,
       category: p.category,
       score: 1,
       thumb_url: p.thumb_url,
       glb_url: `/model/${p.uid}`,
+    };
+    setSelected(hit);
+    setRecent((prev) => {
+      const dedup = prev.filter((r) => r.uid !== p.uid);
+      const next: RecentPick = {
+        uid: p.uid,
+        category: p.category,
+        thumb_url: p.thumb_url,
+        pickedAt: Date.now(),
+      };
+      return [next, ...dedup].slice(0, RECENT_CAP);
     });
   }, []);
 
+  const onToggleCategory = useCallback((name: string) => {
+    setLockedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const onClearCategories = useCallback(() => setLockedCategories(new Set()), []);
+
+  const onReplay = useCallback(
+    (r: RecentPick) => {
+      const hit: Hit = {
+        uid: r.uid,
+        category: r.category,
+        score: 1,
+        thumb_url: r.thumb_url,
+        glb_url: `/model/${r.uid}`,
+      };
+      setSelected(hit);
+      setViewerHit(hit);
+    },
+    [],
+  );
+
+  const onOpenSelected = useCallback(() => {
+    if (selected) setViewerHit(selected);
+  }, [selected]);
+
+  const categories = useMemo(() => (data ? buildCategoryStats(data.points) : []), [data]);
   const count = data?.count ?? 0;
-  const visibleCap = data ? Math.min(data.points.length, 500) : 0;
-  const showCapNote = data ? data.points.length > 500 : false;
+
+  const visibleCount = useMemo(() => {
+    if (!data) return 0;
+    const norm = filter.trim().toLowerCase();
+    if (!norm && lockedCategories.size === 0) return data.points.length;
+    let n = 0;
+    for (const p of data.points) {
+      const cat = p.category.toLowerCase();
+      const passSubstring = !norm || cat.includes(norm);
+      const passLocked = lockedCategories.size === 0 || lockedCategories.has(p.category);
+      if (passSubstring && passLocked) n++;
+    }
+    return n;
+  }, [data, filter, lockedCategories]);
 
   return (
-    <main className="relative h-screen flex flex-col overflow-hidden">
-      <SiteHeader
-        floating
-        right={
-          <div className="ml-auto flex flex-col items-end gap-2">
-            <div className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-ink-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-ember-500 animate-pulse-slow" />
-              <span>{count.toLocaleString()} models</span>
-              <span className="text-ink-600">·</span>
-              <span>clip vit-l/14</span>
-              <span className="text-ink-600">·</span>
-              <span>umap</span>
-            </div>
-            <div className="pointer-events-auto w-64">
-              <CategoryFilter value={filter} onChange={setFilter} disabled={status !== 'ready'} />
-            </div>
-          </div>
-        }
-      />
+    <main className="h-screen flex flex-col bg-ink-950 overflow-hidden">
+      <DashboardTopBar count={count} categoryCount={categories.length} loading={status === 'loading'} />
 
-      <div className="relative flex-1 min-h-0">
-        {status === 'ready' && data && (
-          <AtlasScene
-            points={data.points}
-            filter={filter}
-            onPick={onPick}
-            onHover={setHover}
+      <div className="flex flex-1 min-h-0">
+        <DashboardSidebar
+          totalPoints={count}
+          categories={categories}
+          filter={filter}
+          onFilterChange={setFilter}
+          selectedCategories={lockedCategories}
+          onToggleCategory={onToggleCategory}
+          onClearCategories={onClearCategories}
+          selected={selected}
+          onOpenSelected={onOpenSelected}
+          recent={recent}
+          onReplay={onReplay}
+          status={status}
+          visibleCount={visibleCount}
+        />
+
+        <div className="relative flex-1 min-h-0">
+          {/* Decorative scanline grid behind the canvas — adds the mission-control texture without affecting the 3D scene's framing */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-[0.18]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,122,26,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,122,26,0.04) 1px, transparent 1px)',
+              backgroundSize: '64px 64px',
+            }}
           />
-        )}
 
-        {status === 'loading' && <LoadingOverlay />}
-        {status === 'empty' && <EmptyState detail={emptyDetail} />}
-        {status === 'error' && <ErrorOverlay message={error ?? 'Unknown error'} onRetry={load} />}
+          {/* Corner brackets — pure decoration to frame the viewport like the reference */}
+          <CornerBrackets />
 
-        {hover && <HoverLabel hover={hover} />}
+          {status === 'ready' && data && (
+            <AtlasScene
+              points={data.points}
+              filter={filter}
+              lockedCategories={lockedCategories}
+              selectedUid={selected?.uid ?? null}
+              onPick={onPick}
+              onHover={setHover}
+            />
+          )}
 
-        {status === 'ready' && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between px-5 py-3 font-mono text-[10px] uppercase tracking-[0.22em] text-ink-500">
-            <span>drag · orbit  ·  scroll · zoom  ·  click a sprite to inspect</span>
-            <span>
-              {visibleCap.toLocaleString()} sprites
-              {showCapNote && <> · {(count - visibleCap).toLocaleString()} as dust</>}
-            </span>
-          </div>
-        )}
+          {status === 'loading' && <LoadingOverlay />}
+          {status === 'empty' && <EmptyState detail={emptyDetail} />}
+          {status === 'error' && <ErrorOverlay message={error ?? 'Unknown error'} onRetry={load} />}
+
+          {hover && <HoverTooltip point={hover.point} screen={hover.screen} />}
+
+          {/* Bottom instruction strip */}
+          {status === 'ready' && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between px-4 py-2.5 font-mono text-[9.5px] uppercase tracking-[0.22em] text-ink-500">
+              <span>drag · orbit  ·  scroll · zoom  ·  click a marker to inspect</span>
+              <span>
+                {visibleCount.toLocaleString()} / {count.toLocaleString()} markers illuminated
+              </span>
+            </div>
+          )}
+
+          {/* Bottom-right status pills — match reference's "SYSTEM ACTIVE" cluster */}
+          {status === 'ready' && (
+            <div className="pointer-events-none absolute right-4 bottom-10 flex flex-col items-end gap-1.5">
+              <CornerStatus label="INDEX READY" tone="emerald" />
+              <CornerStatus label="GPU ATTACHED" tone="amber" />
+              <CornerStatus label="UMAP STABLE" tone="ember" />
+            </div>
+          )}
+        </div>
       </div>
 
-      <ModelViewer hit={picked} onClose={() => setPicked(null)} />
+      <ModelViewer hit={viewerHit} onClose={() => setViewerHit(null)} />
     </main>
   );
 }
 
-function CategoryFilter({
-  value,
-  onChange,
-  disabled,
+function CornerStatus({
+  label,
+  tone,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
+  label: string;
+  tone: 'emerald' | 'amber' | 'ember';
 }) {
+  const cls =
+    tone === 'emerald'
+      ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200'
+      : tone === 'amber'
+      ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+      : 'border-ember-500/40 bg-ember-500/10 text-ember-200';
+  const dot =
+    tone === 'emerald'
+      ? 'bg-emerald-300'
+      : tone === 'amber'
+      ? 'bg-amber-300'
+      : 'bg-ember-400';
   return (
-    <div className="relative flex items-center rounded-lg border border-ink-700 bg-ink-900/80 backdrop-blur-md transition-colors focus-within:border-ember-500/60">
-      <span className="pl-3 pr-1.5 text-ink-500">
-        <FilterIcon />
-      </span>
-      <input
-        type="text"
-        inputMode="search"
-        autoComplete="off"
-        spellCheck={false}
-        disabled={disabled}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="filter categories…"
-        className="flex-1 bg-transparent py-1.5 pr-3 text-xs text-ink-100 placeholder:text-ink-500 focus:outline-none disabled:opacity-50"
-      />
-      {value && (
-        <button
-          onClick={() => onChange('')}
-          className="mr-1.5 rounded p-1 text-ink-400 hover:text-ember-400"
-          aria-label="clear filter"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
-      )}
-    </div>
+    <span
+      className={`flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.24em] backdrop-blur-md ${cls}`}
+    >
+      <span className={`h-1 w-1 rounded-full ${dot} animate-pulse`} />
+      {label}
+    </span>
   );
 }
 
-function HoverLabel({ hover }: { hover: NonNullable<HoverState> }) {
-  const { point, screen } = hover;
+function CornerBrackets() {
+  const corner = 'absolute h-4 w-4 border-ember-500/50';
   return (
-    <div
-      className="pointer-events-none fixed z-40 flex items-center gap-2 rounded-md border border-ink-700 bg-ink-950/90 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-200 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.8)] backdrop-blur-sm animate-fade-in"
-      style={{ left: screen.x + 14, top: screen.y + 14 }}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-ember-500" />
-      <span>{point.category || 'untagged'}</span>
-      <span className="text-ink-600">·</span>
-      <span className="text-ink-400">{point.uid.slice(0, 8)}</span>
+    <div aria-hidden className="pointer-events-none absolute inset-3">
+      <span className={`${corner} left-0 top-0 border-l border-t`} />
+      <span className={`${corner} right-0 top-0 border-r border-t`} />
+      <span className={`${corner} left-0 bottom-0 border-l border-b`} />
+      <span className={`${corner} right-0 bottom-0 border-r border-b`} />
     </div>
   );
 }
@@ -187,7 +261,7 @@ function LoadingOverlay() {
     <div className="absolute inset-0 grid place-items-center">
       <div className="flex flex-col items-center gap-3 text-[11px] font-mono uppercase tracking-[0.22em] text-ink-400">
         <span className="flex h-2 w-2 rounded-full bg-ember-500 animate-pulse-slow" />
-        <span>loading atlas…</span>
+        <span>indexing atlas…</span>
       </div>
     </div>
   );
@@ -243,12 +317,3 @@ function ErrorOverlay({ message, onRetry }: { message: string; onRetry: () => vo
     </div>
   );
 }
-
-function FilterIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 5h18l-7 8v6l-4-2v-4z" />
-    </svg>
-  );
-}
-
