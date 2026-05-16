@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from .bench import load_results as load_bench_results
 from .config import THUMBS_DIR
 from .embed import embed_text
 from .index import search as ann_search
@@ -88,6 +89,18 @@ def search(q: str = Query(..., min_length=1), k: int = Query(24, ge=1, le=100)) 
             )
         )
     return SearchResponse(query=q, hits=hits)
+
+
+@app.get("/benchmarks")
+def benchmarks() -> dict:
+    """Return the latest bench run as raw JSON; 404 if never run."""
+    data = load_bench_results()
+    if data is None:
+        raise HTTPException(
+            status_code=404,
+            detail="no benchmark results; run `objaverse-search bench`",
+        )
+    return data
 
 
 @app.get("/atlas", response_model=AtlasResponse)
