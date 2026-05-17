@@ -28,19 +28,29 @@ EMBEDDINGS_PARQUET = EMB_DIR / "embeddings.parquet"
 # ---------- the entire image-side pipeline ---------------------------------------
 
 
-def build_image_embedding_df() -> daft.DataFrame:
-    """One DataFrame: glob thumbnails → bytes → decode → embed.
+def _gather_thumbs() -> list[dict]:
+    """Read PNG bytes off disk so Daft only owns the heavy stages.
 
-    This is the marketing asset. Every step is a native Daft expression.
+    daft.col.download() is built for URLs and does not reliably ingest local
+    Windows paths; pulling bytes in plain Python avoids that footgun without
+    weakening the demo — the embedding pipeline below is still 100% native
+    Daft expressions.
     """
-    thumbs_glob = str(THUMBS_DIR / "*.png")
-    return (
-        daft.from_glob_path(thumbs_glob)
-        .with_column(
-            "uid",
-            daft.functions.regexp_extract(daft.col("path"), r"([0-9a-f]{32})\.png$", 1),
+    rows: list[dict] = []
+    for p in sorted(THUMBS_DIR.glob("*.png")):
+        rows.append({"uid": p.stem, "image_bytes": p.read_bytes()})
+    return rows
+
+
+def build_image_embedding_df() -> daft.DataFrame:
+    """One DataFrame: bytes → decode → embed. This is the marketing asset."""
+    rows = _gather_thumbs()
+    if not rows:
+        raise RuntimeError(
+            f"no thumbnails in {THUMBS_DIR}; run `objaverse-search render` first"
         )
-        .with_column("image_bytes", daft.col("path").download())
+    return (
+        daft.from_pylist(rows)
         .with_column(
             "image",
             daft.functions.decode_image(daft.col("image_bytes")).convert_image("RGB"),
