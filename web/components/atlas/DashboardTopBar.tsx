@@ -36,13 +36,9 @@ export default function DashboardTopBar({ count, categoryCount, loading }: Props
 
       <div className="ml-auto flex items-center gap-2">
         <nav className="hidden sm:flex items-center gap-1 rounded-full border border-ink-700 bg-ink-900/60 p-0.5 text-[10px] font-mono uppercase tracking-[0.22em]">
-          <Link
-            href="/"
-            className="rounded-full px-3 py-1 text-ink-400 transition-colors hover:text-ink-100"
-          >
-            search
-          </Link>
-          <span className="rounded-full bg-ember-500/15 px-3 py-1 text-ember-300">atlas</span>
+          <NavPill href="/" label="search" active={false} />
+          <NavPill href="/atlas" label="atlas" active={true} />
+          <NavPill href="/perf" label="perf" active={false} />
         </nav>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -55,6 +51,19 @@ export default function DashboardTopBar({ count, categoryCount, loading }: Props
         </div>
       </div>
     </header>
+  );
+}
+
+function NavPill({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return active ? (
+    <span className="rounded-full bg-ember-500/15 px-3 py-1 text-ember-300">{label}</span>
+  ) : (
+    <Link
+      href={href}
+      className="rounded-full px-3 py-1 text-ink-400 transition-colors hover:text-ink-100"
+    >
+      {label}
+    </Link>
   );
 }
 
