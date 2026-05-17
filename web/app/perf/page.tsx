@@ -10,6 +10,7 @@ import PerfTopBar from '@/components/perf/PerfTopBar';
 import HardwareBanner from '@/components/perf/HardwareBanner';
 import HeroSpeedup from '@/components/perf/HeroSpeedup';
 import ComparisonBars from '@/components/perf/ComparisonBars';
+import RaceReplay from '@/components/perf/RaceReplay';
 import StatsGrid from '@/components/perf/StatsGrid';
 
 type Status = 'loading' | 'ready' | 'empty' | 'error';
@@ -61,6 +62,9 @@ export default function PerfPage() {
             daft={data.render.daft}
             speedupX={data.render.speedup_x}
           />
+          {hasPerModelTimings(data) && (
+            <RaceReplay naive={data.render.naive} daft={data.render.daft} />
+          )}
           <StatsGrid results={data} />
         </div>
       )}
@@ -72,6 +76,12 @@ export default function PerfPage() {
       {status === 'ready' && <FooterStrip />}
     </main>
   );
+}
+
+function hasPerModelTimings(data: BenchmarkResults): boolean {
+  const n = data.render.naive.per_model;
+  const d = data.render.daft.per_model;
+  return Array.isArray(n) && Array.isArray(d) && n.length > 0 && d.length > 0;
 }
 
 function FooterStrip() {
