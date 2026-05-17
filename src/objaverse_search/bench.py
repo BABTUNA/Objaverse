@@ -91,9 +91,11 @@ def _time_sequential_render(samples: list[dict]) -> dict:
     }
 
 
-# Bench-specific UDF: wraps render_views to also capture wall-clock start/end
-# offsets per model, so the frontend race viz can replay actual scheduling.
-@daft.udf(return_dtype=daft.DataType.python())
+# Bench-specific UDF. use_process=True forks a subprocess per replica so
+# PyVista/VTK can actually render in parallel without GIL contention; without
+# this flag Daft would run the UDF in the main process and the "parallel"
+# speedup would only reflect scheduling overhead.
+@daft.udf(return_dtype=daft.DataType.python(), use_process=True)
 def _bench_render_udf(uid_col, glb_path_col, t0_col):
     out = []
     for uid, glb_path, t0 in zip(
@@ -110,15 +112,28 @@ def _bench_render_udf(uid_col, glb_path_col, t0_col):
     return out
 
 
+def _daft_workers() -> int:
+    """Pick a parallelism level: physical cores capped at 8 (point of diminishing returns)."""
+    physical = psutil.cpu_count(logical=False) or 4
+    return max(2, min(8, physical))
+
+
 def _time_daft_render(samples: list[dict]) -> dict:
-    """Render N models through the Daft UDF pipeline."""
+    """Render N models through the Daft UDF pipeline with real multi-process parallelism."""
+    workers = _daft_workers()
+    udf = _bench_render_udf.with_concurrency(workers)
+
     t0 = time.time()
     df = daft.from_pylist(
         [{"uid": s["uid"], "glb_path": s["glb_path"], "t0": t0} for s in samples]
     )
+    # Force at least `workers` partitions so the concurrent UDF replicas
+    # actually have separate slices to chew on. Without this, from_pylist
+    # produces a single partition and only one replica gets work.
+    df = df.into_partitions(workers)
     df = df.with_column(
         "timing",
-        _bench_render_udf(daft.col("uid"), daft.col("glb_path"), daft.col("t0")),
+        udf(daft.col("uid"), daft.col("glb_path"), daft.col("t0")),
     )
     # collect() forces materialization end-to-end so we time the whole plan.
     result = df.collect()
@@ -131,6 +146,7 @@ def _time_daft_render(samples: list[dict]) -> dict:
         "models_rendered": successes,
         "models_failed": len(samples) - successes,
         "throughput_models_per_sec": round(successes / elapsed, 3) if elapsed > 0 else 0,
+        "workers": workers,
         "per_model": per_model,
     }
 
