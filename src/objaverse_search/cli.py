@@ -10,12 +10,19 @@ console = Console()
 
 
 @app.command()
-def metadata(limit: int = typer.Option(0, help="Only load N entries (0 = all).")) -> None:
+def metadata(
+    limit: int = typer.Option(0, help="Only load N entries (0 = all)."),
+    strategy: str = typer.Option(
+        "random",
+        help="Sampling strategy when limit > 0: random | stratified | sequential.",
+    ),
+    seed: int = typer.Option(42, help="Sampling RNG seed."),
+) -> None:
     """Fetch Objaverse-LVIS metadata into a Daft DataFrame."""
     from . import metadata as md
 
     console.print("[bold cyan]→[/] loading objaverse-lvis metadata")
-    df = md.build_metadata_df(limit=limit)
+    df = md.build_metadata_df(limit=limit, strategy=strategy, seed=seed)
     md.save_metadata(df)
     df.show(5)
 

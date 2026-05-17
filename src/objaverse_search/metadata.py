@@ -8,6 +8,8 @@ the columns the rest of the pipeline needs.
 
 from __future__ import annotations
 
+import random
+
 import daft
 import objaverse
 from rich.console import Console
@@ -19,11 +21,20 @@ console = Console()
 METADATA_PARQUET = EMB_DIR / "metadata.parquet"
 
 
-def build_metadata_df(limit: int = 0) -> daft.DataFrame:
+def build_metadata_df(
+    limit: int = 0,
+    strategy: str = "random",
+    seed: int = 42,
+) -> daft.DataFrame:
     """Build a Daft DataFrame of (uid, category) for Objaverse-LVIS.
 
     Args:
         limit: cap the number of rows; 0 means all ~46k.
+        strategy: how to sample when limit > 0.
+            - 'random'      uniform random across all uids
+            - 'stratified'  ceil(limit/n_categories) from each category until full
+            - 'sequential'  legacy head-N behavior (alphabetical by category)
+        seed: RNG seed for reproducibility on the non-sequential strategies.
     """
     console.print("[cyan]fetching LVIS annotations...[/]")
     lvis: dict[str, list[str]] = objaverse.load_lvis_annotations()
@@ -33,12 +44,50 @@ def build_metadata_df(limit: int = 0) -> daft.DataFrame:
         for category, uids in lvis.items()
         for uid in uids
     ]
-    if limit > 0:
-        rows = rows[:limit]
 
-    console.print(f"[green]✓[/] {len(rows):,} models across {len(lvis):,} categories")
+    if limit > 0 and limit < len(rows):
+        if strategy == "sequential":
+            rows = rows[:limit]
+        elif strategy == "stratified":
+            rows = _stratified_sample(lvis, limit, seed)
+        else:  # 'random'
+            rng = random.Random(seed)
+            rng.shuffle(rows)
+            rows = rows[:limit]
+
+    distinct = len({r["category"] for r in rows})
+    console.print(
+        f"[green]✓[/] {len(rows):,} models across {distinct:,} categories "
+        f"(strategy={strategy}, seed={seed})"
+    )
 
     return daft.from_pylist(rows)
+
+
+def _stratified_sample(lvis: dict[str, list[str]], limit: int, seed: int) -> list[dict]:
+    """Sample evenly across categories so every category is represented when possible."""
+    rng = random.Random(seed)
+    categories = list(lvis.keys())
+    rng.shuffle(categories)
+
+    per_cat: dict[str, list[str]] = {c: list(lvis[c]) for c in categories}
+    for c in categories:
+        rng.shuffle(per_cat[c])
+
+    picked: list[dict] = []
+    # Round-robin: take one from each category until we hit the limit.
+    while len(picked) < limit:
+        progressed = False
+        for c in categories:
+            if not per_cat[c]:
+                continue
+            picked.append({"uid": per_cat[c].pop(), "category": c})
+            progressed = True
+            if len(picked) >= limit:
+                break
+        if not progressed:
+            break
+    return picked
 
 
 def save_metadata(df: daft.DataFrame) -> None:
