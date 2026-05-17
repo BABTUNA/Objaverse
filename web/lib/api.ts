@@ -44,11 +44,19 @@ export type Hardware = {
   gpu: string | null;
 };
 
+export type PerModelTiming = {
+  uid: string;
+  start_s: number;
+  end_s: number;
+  ok: boolean;
+};
+
 export type BenchmarkRunSummary = {
   elapsed_seconds: number;
   models_rendered: number;
   models_failed: number;
   throughput_models_per_sec: number;
+  per_model?: PerModelTiming[];
 };
 
 export type BenchmarkResults = {
