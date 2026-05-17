@@ -1,93 +1,103 @@
-"""Stage 4: CLIP-embed rendered views and mean-pool per model.
+"""Stage 4: embed every rendered thumbnail with Daft's native embed_image.
 
-A class-based Daft UDF lets us load the CLIP model once per worker and
-then process batches of views without re-incurring the warmup cost.
-We mean-pool across views, then L2-normalize so cosine ANN works as
-plain inner-product downstream.
+The whole image-side pipeline is one Daft DataFrame — no UDF, no
+torch boilerplate, no batching by hand. Daft handles model loading,
+GPU placement, batching, and concurrency under the hood.
+
+Text-side query encoding (used by /search) still goes through
+open_clip directly because Daft's embed_text uses sentence-transformers
+rather than CLIP's text tower, and we need the two encoders to share
+the same embedding space.
 """
 
 from __future__ import annotations
 
 import daft
 import numpy as np
-import open_clip
 import torch
-from PIL import Image
+from rich.console import Console
 
-from .config import CLIP_EMBED_DIM, CLIP_MODEL, CLIP_PRETRAINED, EMB_DIR
-from .render import load_renders
+from .config import CLIP_EMBED_DIM, CLIP_HF_ID, CLIP_MODEL, CLIP_PRETRAINED, EMB_DIR, THUMBS_DIR
+from .metadata import load_metadata
+
+console = Console()
 
 EMBEDDINGS_PARQUET = EMB_DIR / "embeddings.parquet"
 
 
-# ---------- model loader ----------------------------------------------------------
+# ---------- the entire image-side pipeline ---------------------------------------
 
 
-def _load_clip(device: str | None = None):
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    model, _, preprocess = open_clip.create_model_and_transforms(
-        CLIP_MODEL, pretrained=CLIP_PRETRAINED
+def build_image_embedding_df() -> daft.DataFrame:
+    """One DataFrame: glob thumbnails → bytes → decode → embed.
+
+    This is the marketing asset. Every step is a native Daft expression.
+    """
+    thumbs_glob = str(THUMBS_DIR / "*.png")
+    return (
+        daft.from_glob_path(thumbs_glob)
+        .with_column(
+            "uid",
+            daft.functions.regexp_extract(daft.col("path"), r"([0-9a-f]{32})\.png$", 1),
+        )
+        .with_column("image_bytes", daft.col("path").download())
+        .with_column(
+            "image",
+            daft.functions.decode_image(daft.col("image_bytes")).convert_image("RGB"),
+        )
+        .with_column(
+            "embedding",
+            daft.functions.embed_image(
+                daft.col("image"),
+                provider="transformers",
+                model=CLIP_HF_ID,
+            ),
+        )
+        .select("uid", "embedding")
     )
-    model = model.to(device).eval()
+
+
+# ---------- text-side helper (CLIP text tower via open_clip) ---------------------
+
+
+def _load_clip_text():
+    import open_clip
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model, _, _ = open_clip.create_model_and_transforms(CLIP_MODEL, pretrained=CLIP_PRETRAINED)
     tokenizer = open_clip.get_tokenizer(CLIP_MODEL)
-    return model, preprocess, tokenizer, device
-
-
-# ---------- image-side embed UDF --------------------------------------------------
-
-
-@daft.udf(return_dtype=daft.DataType.embedding(daft.DataType.float32(), CLIP_EMBED_DIM))
-class EmbedViewsUDF:
-    def __init__(self) -> None:
-        self.model, self.preprocess, _, self.device = _load_clip()
-
-    @torch.inference_mode()
-    def __call__(self, views_col) -> list[np.ndarray]:
-        out: list[np.ndarray] = []
-        for views in views_col.to_pylist():
-            if views is None:
-                out.append(np.zeros(CLIP_EMBED_DIM, dtype=np.float32))
-                continue
-
-            arr = np.asarray(views)  # (n_views, H, W, 3) uint8
-            pil = [Image.fromarray(v) for v in arr]
-            batch = torch.stack([self.preprocess(im) for im in pil]).to(self.device)
-
-            feats = self.model.encode_image(batch).float()
-            feats = feats / feats.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-            pooled = feats.mean(dim=0)
-            pooled = pooled / pooled.norm().clamp(min=1e-8)
-
-            out.append(pooled.cpu().numpy().astype(np.float32))
-        return out
-
-
-# ---------- text-side helper (for query time, kept here to share the model load) --
+    return model.to(device).eval(), tokenizer, device
 
 
 def embed_text(query: str) -> np.ndarray:
-    """One-shot text embedding for /search; not a Daft UDF."""
-    model, _, tokenizer, device = _load_clip()
+    """One-shot text embedding for /search; not part of the Daft pipeline."""
+    model, tokenizer, device = _load_clip_text()
     with torch.inference_mode():
         toks = tokenizer([query]).to(device)
         feats = model.encode_text(toks).float()
         feats = feats / feats.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        assert feats.shape[-1] == CLIP_EMBED_DIM, f"text dim mismatch: {feats.shape}"
         return feats[0].cpu().numpy().astype(np.float32)
 
 
-# ---------- pipeline entry point --------------------------------------------------
+# ---------- pipeline entry point -------------------------------------------------
 
 
-def run(batch_size: int = 64) -> None:
-    from rich.console import Console
+def run(batch_size: int = 64, explain: bool = False) -> None:
+    df = build_image_embedding_df()
 
-    console = Console()
-    df = load_renders()
+    if explain:
+        # Daft prints the unoptimized + optimized + physical plans. The mermaid
+        # variant of the optimized plan is captured separately by the explain
+        # CLI command for embedding in the README.
+        console.print("[cyan]→[/] daft plan:")
+        df.explain(show_all=True)
 
-    console.print("[bold cyan]→[/] embedding views with CLIP")
-    df = df.with_column("embedding", EmbedViewsUDF(daft.col("views")))
-    df = df.select("uid", "category", "embedding")
+    # Join category back from metadata.parquet so LanceDB rows carry the label.
+    meta = load_metadata().select("uid", "category")
+    df = df.join(meta, on="uid", how="inner")
 
+    console.print("[bold cyan]→[/] embedding thumbnails (one Daft DataFrame, zero UDFs)")
     df.write_parquet(str(EMBEDDINGS_PARQUET))
     console.print(f"[green]✓[/] wrote {EMBEDDINGS_PARQUET}")
 

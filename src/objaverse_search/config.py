@@ -21,10 +21,16 @@ RENDER_VIEWS = 8                # cameras evenly spaced around object
 RENDER_SIZE = 224               # CLIP input resolution
 RENDER_BG_COLOR = (1.0, 1.0, 1.0, 0.0)  # transparent
 
-# CLIP
-CLIP_MODEL = "ViT-L-14"
+# CLIP — using the OpenAI clip-vit-base-patch32 family.
+# - Daft's native embed_image picks this model up by HF id under the
+#   transformers provider.
+# - For text-side query encoding (which Daft doesn't have a CLIP-aware
+#   path for) we mirror the same weights via open_clip's "ViT-B-32 openai"
+#   so image + text embeddings share the same space.
+CLIP_MODEL = "ViT-B-32"
 CLIP_PRETRAINED = "openai"
-CLIP_EMBED_DIM = 768
+CLIP_HF_ID = "openai/clip-vit-base-patch32"
+CLIP_EMBED_DIM = 512
 
 # LanceDB
 LANCE_TABLE = "objaverse_lvis"

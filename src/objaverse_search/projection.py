@@ -1,7 +1,7 @@
 """Stage 6: UMAP-reduce CLIP embeddings to 3D for the atlas view.
 
-The pipeline produces a high-dimensional (768d) CLIP embedding per
-model. To make latent-space structure browsable we project down to
+The pipeline produces a high-dimensional CLIP embedding per
+model (currently 512d under CLIP ViT-B/32). To make latent-space structure browsable we project down to
 3D with UMAP, scale to a unit cube centered at the origin, and join
 the coords back onto (uid, category, thumb_url) for the frontend.
 
