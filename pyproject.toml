@@ -27,6 +27,12 @@ dependencies = [
   # Embeddings
   "torch>=2.2",
   "torchvision>=0.17",
+  # Daft's native embed_image routes through the transformers provider —
+  # the HF library is what actually loads and runs the CLIP image tower.
+  "transformers>=4.40",
+  # open_clip is kept only for text-side query encoding (Daft's embed_text
+  # uses sentence-transformers, not CLIP's text tower, so it can't sit in
+  # the same embedding space as embed_image).
   "open_clip_torch>=2.24",
   "ftfy",
   "regex",
