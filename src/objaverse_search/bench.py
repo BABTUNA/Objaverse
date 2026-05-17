@@ -118,18 +118,49 @@ def _daft_workers() -> int:
     return max(2, min(8, physical))
 
 
+def _ensure_ray_runner(workers: int) -> str:
+    """Switch Daft to the Ray runner so partitioning + concurrency actually take effect.
+
+    Returns a label describing what we ended up with — surfaced in the JSON
+    so /perf can be honest about whether real parallelism was running.
+    """
+    try:
+        import ray
+    except ImportError:
+        console.print(
+            "[yellow]warn[/] ray not installed; native runner can't repartition, "
+            "Daft bench will run single-process"
+        )
+        return "native"
+
+    try:
+        if not ray.is_initialized():
+            ray.init(
+                num_cpus=workers,
+                ignore_reinit_error=True,
+                log_to_driver=False,
+                include_dashboard=False,
+            )
+        daft.set_runner_ray()
+        return "ray"
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]warn[/] ray init failed ({exc}); falling back to native runner")
+        return "native"
+
+
 def _time_daft_render(samples: list[dict]) -> dict:
     """Render N models through the Daft UDF pipeline with real multi-process parallelism."""
     workers = _daft_workers()
+    runner = _ensure_ray_runner(workers)
     udf = _bench_render_udf.with_concurrency(workers)
 
     t0 = time.time()
     df = daft.from_pylist(
         [{"uid": s["uid"], "glb_path": s["glb_path"], "t0": t0} for s in samples]
     )
-    # Force at least `workers` partitions so the concurrent UDF replicas
-    # actually have separate slices to chew on. Without this, from_pylist
-    # produces a single partition and only one replica gets work.
+    # Repartition so the concurrent UDF replicas have distinct slices. On the
+    # native runner this is a no-op (Daft warns) and we'll only see one worker;
+    # on Ray it splits the data correctly.
     df = df.into_partitions(workers)
     df = df.with_column(
         "timing",
@@ -147,6 +178,7 @@ def _time_daft_render(samples: list[dict]) -> dict:
         "models_failed": len(samples) - successes,
         "throughput_models_per_sec": round(successes / elapsed, 3) if elapsed > 0 else 0,
         "workers": workers,
+        "runner": runner,
         "per_model": per_model,
     }
 

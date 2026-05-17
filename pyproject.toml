@@ -47,6 +47,11 @@ dependencies = [
   "typer>=0.12",
   "rich>=13.7",
   "psutil>=5.9",
+
+  # Ray powers Daft's real cross-process parallelism on a single machine.
+  # The native runner ignores into_partitions, so the bench can't actually
+  # show concurrent execution without this.
+  "ray>=2.10",
 ]
 
 [project.optional-dependencies]
