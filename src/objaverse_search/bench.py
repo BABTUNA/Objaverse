@@ -26,7 +26,7 @@ from rich.console import Console
 
 from .config import EMB_DIR
 from .download import load_with_paths
-from .render import render_views, render_views_udf
+from .render import render_views
 
 console = Console()
 
@@ -63,43 +63,75 @@ def _time_sequential_render(samples: list[dict]) -> dict:
     """Render N models one at a time in this process."""
     successes = 0
     failures = 0
-    t0 = time.perf_counter()
+    per_model: list[dict] = []
+    # Use wall clock so timings are comparable to the Daft run (which may
+    # execute across worker processes where perf_counter epochs differ).
+    t0 = time.time()
     for s in samples:
+        start = time.time() - t0
+        ok = True
         try:
             render_views(s["glb_path"])
             successes += 1
         except Exception as exc:  # noqa: BLE001
             failures += 1
+            ok = False
             console.print(f"[yellow]naive skip[/] {s['uid']}: {exc}")
-    elapsed = time.perf_counter() - t0
+        end = time.time() - t0
+        per_model.append(
+            {"uid": s["uid"], "start_s": round(start, 3), "end_s": round(end, 3), "ok": ok}
+        )
+    elapsed = time.time() - t0
     return {
         "elapsed_seconds": round(elapsed, 3),
         "models_rendered": successes,
         "models_failed": failures,
         "throughput_models_per_sec": round(successes / elapsed, 3) if elapsed > 0 else 0,
+        "per_model": per_model,
     }
+
+
+# Bench-specific UDF: wraps render_views to also capture wall-clock start/end
+# offsets per model, so the frontend race viz can replay actual scheduling.
+@daft.udf(return_dtype=daft.DataType.python())
+def _bench_render_udf(uid_col, glb_path_col, t0_col):
+    out = []
+    for uid, glb_path, t0 in zip(
+        uid_col.to_pylist(), glb_path_col.to_pylist(), t0_col.to_pylist()
+    ):
+        start = time.time() - t0
+        ok = True
+        try:
+            render_views(glb_path)
+        except Exception:  # noqa: BLE001
+            ok = False
+        end = time.time() - t0
+        out.append({"uid": uid, "start_s": round(start, 3), "end_s": round(end, 3), "ok": ok})
+    return out
 
 
 def _time_daft_render(samples: list[dict]) -> dict:
     """Render N models through the Daft UDF pipeline."""
-    df = daft.from_pylist([{"uid": s["uid"], "glb_path": s["glb_path"]} for s in samples])
-
-    t0 = time.perf_counter()
-    df = df.with_column(
-        "views",
-        render_views_udf(daft.col("uid"), daft.col("glb_path")),
+    t0 = time.time()
+    df = daft.from_pylist(
+        [{"uid": s["uid"], "glb_path": s["glb_path"], "t0": t0} for s in samples]
     )
-    df = df.where(~daft.col("views").is_null())
+    df = df.with_column(
+        "timing",
+        _bench_render_udf(daft.col("uid"), daft.col("glb_path"), daft.col("t0")),
+    )
     # collect() forces materialization end-to-end so we time the whole plan.
     result = df.collect()
-    elapsed = time.perf_counter() - t0
+    elapsed = time.time() - t0
 
-    successes = result.count_rows()
+    per_model = [row["timing"] for row in result.to_pylist()]
+    successes = sum(1 for m in per_model if m["ok"])
     return {
         "elapsed_seconds": round(elapsed, 3),
         "models_rendered": successes,
         "models_failed": len(samples) - successes,
         "throughput_models_per_sec": round(successes / elapsed, 3) if elapsed > 0 else 0,
+        "per_model": per_model,
     }
 
 
