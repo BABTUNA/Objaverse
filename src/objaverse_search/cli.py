@@ -49,11 +49,40 @@ def render(limit: int = typer.Option(0, help="Only render N models (0 = all)."))
 
 
 @app.command()
-def embed(batch_size: int = typer.Option(64, help="CLIP batch size.")) -> None:
-    """CLIP-embed rendered views, mean-pool per model."""
+def embed(
+    batch_size: int = typer.Option(64, help="CLIP batch size."),
+    explain: bool = typer.Option(False, help="Print the Daft execution plan before running."),
+) -> None:
+    """Embed rendered thumbnails through Daft's native embed_image."""
     from . import embed as eb
 
-    eb.run(batch_size=batch_size)
+    eb.run(batch_size=batch_size, explain=explain)
+
+
+@app.command()
+def explain(out: str = typer.Option("docs/pipeline-plan.mmd", help="Mermaid output path.")) -> None:
+    """Dump the optimized Daft plan for the embed pipeline to a .mmd file (for the README)."""
+    from pathlib import Path as _Path
+
+    from . import embed as eb
+
+    df = eb.build_image_embedding_df()
+    target = _Path(out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # `format="mermaid"` emits a Mermaid graph definition; pipe it through any
+    # mermaid renderer to get the SVG/PNG.
+    diagram = df.explain(show_all=True, format="mermaid")
+    if diagram is None:
+        # Older Daft variants print to stdout and return None; capture via repr fallback.
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            df.explain(show_all=True, format="mermaid")
+        diagram = buf.getvalue()
+    target.write_text(diagram)
+    console.print(f"[green]✓[/] wrote {target}")
 
 
 @app.command()
