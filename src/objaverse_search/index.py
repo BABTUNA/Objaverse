@@ -7,12 +7,14 @@ IVF_PQ index used for cosine queries at serve time.
 
 from __future__ import annotations
 
+import daft
 import lancedb
 import pyarrow as pa
 from rich.console import Console
 
 from .config import CLIP_EMBED_DIM, LANCE_TABLE, LANCEDB_DIR
 from .embed import load_embeddings
+from .metadata import load_metadata
 
 console = Console()
 
@@ -40,8 +42,19 @@ def _to_arrow(df) -> pa.Table:
 PQ_MIN_ROWS = 256
 
 
+def _attach_categories(emb_df: daft.DataFrame) -> daft.DataFrame:
+    """Left-join the category label from metadata; missing matches get null."""
+    try:
+        meta = load_metadata().select("uid", "category")
+        joined = emb_df.join(meta, on="uid", how="left")
+        return joined
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]warn[/] couldn't join metadata: {exc}; categories will be null")
+        return emb_df.with_column("category", daft.lit(None).cast(daft.DataType.string()))
+
+
 def build_index() -> None:
-    df = load_embeddings()
+    df = _attach_categories(load_embeddings())
     table = _to_arrow(df)
     console.print(f"[cyan]ingesting[/] {table.num_rows:,} vectors into LanceDB")
 

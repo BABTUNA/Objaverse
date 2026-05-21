@@ -28,10 +28,26 @@ PROJECTION_JSON = EMB_DIR / "projection.json"
 
 
 def _stack_embeddings(df: daft.DataFrame) -> tuple[list[str], list[str], np.ndarray]:
-    """Pull (uid, category, embedding) into plain Python/Numpy for UMAP."""
+    """Pull (uid, category, embedding) into plain Python/Numpy for UMAP.
+
+    Embeddings live in their own parquet; categories come from metadata via a
+    best-effort left join so a stale metadata.parquet doesn't drop every row.
+    """
+    from .metadata import load_metadata
+
+    cols = df.column_names if hasattr(df, "column_names") else df.schema().column_names()
+    if "category" not in cols:
+        try:
+            meta = load_metadata().select("uid", "category")
+            df = df.join(meta, on="uid", how="left")
+        except Exception:  # noqa: BLE001
+            df = df.with_column("category", daft.lit(None).cast(daft.DataType.string()))
+
     rows = df.select("uid", "category", "embedding").to_pylist()
+    if not rows:
+        raise RuntimeError("no embedding rows to project; check embed stage output")
     uids = [r["uid"] for r in rows]
-    cats = [r["category"] or "" for r in rows]
+    cats = [r.get("category") or "" for r in rows]
     vecs = np.asarray([r["embedding"] for r in rows], dtype=np.float32)
     assert vecs.shape[1] == CLIP_EMBED_DIM, f"unexpected embedding dim: {vecs.shape}"
     return uids, cats, vecs
