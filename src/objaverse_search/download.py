@@ -54,7 +54,7 @@ def run(limit: int = 0, chunk_size: int = 256) -> None:
     if limit > 0:
         df = df.limit(limit)
     df = attach_glb_paths(df, chunk_size=chunk_size)
-    df.write_parquet(str(WITH_PATHS_PARQUET))
+    df.write_parquet(str(WITH_PATHS_PARQUET), write_mode="overwrite")
     console.print(f"[green]✓[/] wrote {WITH_PATHS_PARQUET}")
 
 

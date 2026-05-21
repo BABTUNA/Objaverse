@@ -103,7 +103,7 @@ def run(batch_size: int = 64, explain: bool = False) -> None:
         df.explain(show_all=True)
 
     console.print("[bold cyan]→[/] embedding thumbnails (one Daft DataFrame, zero UDFs)")
-    df.write_parquet(str(EMBEDDINGS_PARQUET))
+    df.write_parquet(str(EMBEDDINGS_PARQUET), write_mode="overwrite")
     # Sanity-check what actually landed on disk — a 0-row parquet here is a
     # silent failure mode of the embed pipeline that downstream stages will
     # surface much later with confusing errors.

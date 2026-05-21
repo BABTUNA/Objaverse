@@ -161,7 +161,7 @@ def run(limit: int = 0) -> None:
     )
     df = df.where(~daft.col("views").is_null())
 
-    df.write_parquet(str(RENDERS_PARQUET))
+    df.write_parquet(str(RENDERS_PARQUET), write_mode="overwrite")
     console.print(f"[green]✓[/] wrote {RENDERS_PARQUET}")
 
 

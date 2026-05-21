@@ -92,7 +92,7 @@ def _stratified_sample(lvis: dict[str, list[str]], limit: int, seed: int) -> lis
 
 def save_metadata(df: daft.DataFrame) -> None:
     """Persist the metadata DataFrame to parquet for downstream stages."""
-    df.write_parquet(str(METADATA_PARQUET))
+    df.write_parquet(str(METADATA_PARQUET), write_mode="overwrite")
     console.print(f"[green]✓[/] wrote {METADATA_PARQUET}")
 
 

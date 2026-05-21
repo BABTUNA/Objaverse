@@ -103,7 +103,7 @@ def build_projection(n_neighbors: int = 25, min_dist: float = 0.15, seed: int = 
         for uid, cat, c in zip(uids, cats, coords)
     ]
     out_df = daft.from_pylist(out_rows)
-    out_df.write_parquet(str(PROJECTION_PARQUET))
+    out_df.write_parquet(str(PROJECTION_PARQUET), write_mode="overwrite")
 
     # JSON sidecar so the API can serve the atlas without rehydrating Daft on every request.
     PROJECTION_JSON.write_text(json.dumps(out_rows, separators=(",", ":")))
