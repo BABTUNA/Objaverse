@@ -38,8 +38,16 @@ def _stack_embeddings(df: daft.DataFrame) -> tuple[list[str], list[str], np.ndar
     cols = df.column_names if hasattr(df, "column_names") else df.schema().column_names()
     if "category" not in cols:
         try:
-            meta = load_metadata().select("uid", "category")
-            df = df.join(meta, on="uid", how="left")
+            # Dedupe metadata first — a uid can sit in multiple LVIS categories;
+            # without this, the left join duplicates each embedding by category
+            # count and UMAP fits on the wrong shape.
+            meta_rows = load_metadata().select("uid", "category").to_pylist()
+            seen: dict[str, str] = {}
+            for r in meta_rows:
+                if r["uid"] not in seen:
+                    seen[r["uid"]] = r["category"]
+            meta = daft.from_pylist([{"uid": u, "category": c} for u, c in seen.items()])
+            df = df.join(meta, on="uid", how="left").select("uid", "embedding", "category")
         except Exception:  # noqa: BLE001
             df = df.with_column("category", daft.lit(None).cast(daft.DataType.string()))
 

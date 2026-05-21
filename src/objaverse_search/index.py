@@ -43,11 +43,23 @@ PQ_MIN_ROWS = 256
 
 
 def _attach_categories(emb_df: daft.DataFrame) -> daft.DataFrame:
-    """Left-join the category label from metadata; missing matches get null."""
+    """Left-join the category label from metadata; missing matches get null.
+
+    LVIS uids can appear in multiple categories, so we dedupe the metadata
+    side first (one category per uid) — otherwise the left join blows up
+    each embedding into N rows. The post-join select also explicitly
+    re-projects to (uid, embedding, category) so LanceDB doesn't see the
+    `right.category` rename Daft produces on collision-safe joins.
+    """
     try:
-        meta = load_metadata().select("uid", "category")
+        meta_rows = load_metadata().select("uid", "category").to_pylist()
+        seen: dict[str, str] = {}
+        for r in meta_rows:
+            if r["uid"] not in seen:
+                seen[r["uid"]] = r["category"]
+        meta = daft.from_pylist([{"uid": u, "category": c} for u, c in seen.items()])
         joined = emb_df.join(meta, on="uid", how="left")
-        return joined
+        return joined.select("uid", "embedding", "category")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]warn[/] couldn't join metadata: {exc}; categories will be null")
         return emb_df.with_column("category", daft.lit(None).cast(daft.DataType.string()))
