@@ -121,6 +121,13 @@ def _daft_workers() -> int:
 def _ensure_ray_runner(workers: int) -> str:
     """Switch Daft to the Ray runner so partitioning + concurrency actually take effect.
 
+    *MUST be called before any other Daft operation in this process.* Daft's
+    runner is locked on the first call to get_or_create_runner(), which is
+    triggered by anything that materializes a DataFrame (collect, to_pylist,
+    write_parquet). Once locked to native, set_runner_ray is silently ignored
+    and into_partitions becomes a no-op — which is exactly the bug that left
+    us at ~1× speedup.
+
     Returns a label describing what we ended up with — surfaced in the JSON
     so /perf can be honest about whether real parallelism was running.
     """
@@ -142,6 +149,14 @@ def _ensure_ray_runner(workers: int) -> str:
                 include_dashboard=False,
             )
         daft.set_runner_ray()
+        # Verify: get the actual active runner type now that we've requested ray.
+        active = daft.runners.get_or_infer_runner_type()
+        if active != "ray":
+            console.print(
+                f"[yellow]warn[/] requested ray runner but Daft is using '{active}' "
+                "(runner was already locked); the bench will under-parallelize"
+            )
+            return active
         return "ray"
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]warn[/] ray init failed ({exc}); falling back to native runner")
@@ -149,9 +164,12 @@ def _ensure_ray_runner(workers: int) -> str:
 
 
 def _time_daft_render(samples: list[dict]) -> dict:
-    """Render N models through the Daft UDF pipeline with real multi-process parallelism."""
+    """Render N models through the Daft UDF pipeline with real multi-process parallelism.
+
+    Assumes the caller has already called _ensure_ray_runner before any other
+    Daft op in the process — see run() for the rationale.
+    """
     workers = _daft_workers()
-    runner = _ensure_ray_runner(workers)
     udf = _bench_render_udf.with_concurrency(workers)
 
     t0 = time.time()
@@ -178,7 +196,6 @@ def _time_daft_render(samples: list[dict]) -> dict:
         "models_failed": len(samples) - successes,
         "throughput_models_per_sec": round(successes / elapsed, 3) if elapsed > 0 else 0,
         "workers": workers,
-        "runner": runner,
         "per_model": per_model,
     }
 
@@ -188,12 +205,21 @@ def _time_daft_render(samples: list[dict]) -> dict:
 
 def run(n: int = 20) -> None:
     """Benchmark sequential vs Daft render on N sampled models."""
+    hardware = _detect_hardware()
+    workers = _daft_workers()
+
+    # CRITICAL: flip Daft to the Ray runner BEFORE any other Daft op runs in
+    # this process. Daft locks the runner on first get_or_create_runner() call,
+    # which is triggered by anything that materializes a DataFrame. If we read
+    # the metadata parquet first, the runner locks to native and our
+    # set_runner_ray below silently no-ops — that's why earlier bench runs
+    # reported ~1× speedup despite the explicit ray switch.
+    runner = _ensure_ray_runner(workers)
+
     df = load_with_paths().limit(n)
     samples = df.select("uid", "glb_path").to_pylist()
     if not samples:
         raise RuntimeError("no downloaded glbs — run download first")
-
-    hardware = _detect_hardware()
     console.print(
         f"[cyan]bench[/] {len(samples)} models  ·  "
         f"{hardware['cpu_physical_cores']}c/{hardware['cpu_logical_cores']}t  ·  "
@@ -219,6 +245,8 @@ def run(n: int = 20) -> None:
         if daft_result["elapsed_seconds"] > 0
         else 0
     )
+
+    daft_result["runner"] = runner
 
     payload = {
         "ran_at": datetime.now(timezone.utc).isoformat(),
