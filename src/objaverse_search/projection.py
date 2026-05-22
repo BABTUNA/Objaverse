@@ -78,11 +78,17 @@ def _fit_umap(vecs: np.ndarray, n_neighbors: int, min_dist: float, seed: int) ->
     return reducer.fit_transform(vecs)
 
 
-def _normalize_to_cube(coords: np.ndarray) -> np.ndarray:
-    """Center at origin and scale into a [-1, 1] cube along the widest axis."""
+def _normalize_to_sphere(coords: np.ndarray) -> np.ndarray:
+    """Center at origin and scale so every point sits inside a unit sphere.
+
+    Previously normalized to a [-1, 1] cube along the widest axis, which left
+    cube-corner points sitting outside the atlas's wireframe globe shell
+    (cube diagonal is ~sqrt(3)x the inscribed sphere radius). Normalizing by
+    the max L2 distance keeps every point inside ||p|| <= 1.
+    """
     coords = coords - coords.mean(axis=0, keepdims=True)
-    scale = float(np.max(np.abs(coords))) or 1.0
-    return (coords / scale).astype(np.float32)
+    max_radius = float(np.linalg.norm(coords, axis=1).max()) or 1.0
+    return (coords / max_radius).astype(np.float32)
 
 
 def build_projection(n_neighbors: int = 25, min_dist: float = 0.15, seed: int = 42) -> None:
@@ -90,7 +96,7 @@ def build_projection(n_neighbors: int = 25, min_dist: float = 0.15, seed: int = 
     uids, cats, vecs = _stack_embeddings(df)
     console.print(f"[cyan]projecting[/] {len(uids):,} embeddings → 3D via UMAP")
 
-    coords = _normalize_to_cube(_fit_umap(vecs, n_neighbors, min_dist, seed))
+    coords = _normalize_to_sphere(_fit_umap(vecs, n_neighbors, min_dist, seed))
 
     out_rows = [
         {
