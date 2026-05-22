@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import PerfTopBar from '@/components/perf/PerfTopBar';
 import HardwareBanner from '@/components/perf/HardwareBanner';
+import PillButton from '@/components/ui/PillButton';
 import HeroSpeedup from '@/components/perf/HeroSpeedup';
 import ComparisonBars from '@/components/perf/ComparisonBars';
 import RaceReplay from '@/components/perf/RaceReplay';
@@ -161,7 +162,7 @@ function EmptyState({ detail }: { detail: string | null }) {
             <path d="m7 14 4-4 4 4 5-7" />
           </svg>
         </div>
-        <h3 className="font-display text-2xl text-ink-100">No benchmarks yet</h3>
+        <h3 className="font-display text-2xl font-bold tracking-tightest text-ink-100">No benchmarks yet</h3>
         <p className="mt-2 text-sm text-ink-300">
           {detail ?? 'No benchmark results have been recorded.'} Run the bench to populate this page:
         </p>
@@ -197,17 +198,16 @@ function ErrorOverlay({ message, onRetry }: { message: string; onRetry: () => vo
             <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
           </svg>
         </div>
-        <h3 className="font-display text-2xl text-ink-100">The benchmarks didn&rsquo;t load</h3>
+        <h3 className="font-display text-2xl font-bold tracking-tightest text-ink-100">The benchmarks didn&rsquo;t load</h3>
         <p className="mt-2 text-sm text-ink-300">
           {message}. Is the FastAPI server running on{' '}
           <span className="font-mono text-ink-100">:8000</span>?
         </p>
-        <button
-          onClick={onRetry}
-          className="mt-5 rounded-xl bg-ember-500 px-4 py-2 text-sm font-medium text-ink-950 hover:bg-ember-400 transition-colors"
-        >
-          Try again
-        </button>
+        <div className="mt-5 inline-flex">
+          <PillButton onClick={onRetry} variant="primary" size="sm">
+            Try again
+          </PillButton>
+        </div>
       </div>
     </div>
   );
