@@ -56,3 +56,8 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Reference images and stray npm artifacts
+style_reference.webp
+world_view.jpg
+/package-lock.json

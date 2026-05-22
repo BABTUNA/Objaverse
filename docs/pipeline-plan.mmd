@@ -1,0 +1,73 @@
+```mermaid
+flowchart TD
+subgraph unoptimized["Unoptimized LogicalPlan"]
+direction TB
+unoptimizedProject0["Project: col(uid), col(embedding)"]
+unoptimizedProject1["Project: col(uid), col(image_bytes), col(image), embed_image-618665-
+0(col(image)) as embedding"]
+unoptimizedProject2["Project: col(uid), col(image_bytes), to_mode(image_decode(col(image_bytes),
+lit('raise'), lit(PyObject(RGB))), lit(PyObject(RGB))) as image"]
+unoptimizedSource3["Source:
+Number of partitions = 1
+Output schema = uid#Utf8, image_bytes#Binary"]
+unoptimizedSource3 --> unoptimizedProject2
+unoptimizedProject2 --> unoptimizedProject1
+unoptimizedProject1 --> unoptimizedProject0
+end
+
+subgraph optimized["Optimized LogicalPlan"]
+direction TB
+optimizedUDFProject0["Builtin UDF embed_image:
+Expr = embed_image-618665-0(col(__TruncateRootUDF_0-1-0__)) as embedding
+Passthrough Columns = col(uid)
+Properties = { max_retries = 3, on_error = raise, async = false, scalar =
+false }
+Resource request = { num_gpus = 0 }
+Stats = { Approx num rows = 18, Approx size bytes = 300.50 KiB, Accumulated
+selectivity = 1.00 }"]
+optimizedProject1["Project: to_mode(image_decode(col(image_bytes), lit('raise'),
+lit(PyObject(RGB))), lit(PyObject(RGB))) as __TruncateRootUDF_0-1-0__, col(uid)
+Stats = { Approx num rows = 18, Approx size bytes = 300.50 KiB, Accumulated
+selectivity = 1.00 }"]
+optimizedSource2["Source:
+Number of partitions = 1
+Output schema = uid#Utf8, image_bytes#Binary
+Stats = { Approx num rows = 18, Approx size bytes = 300.50 KiB, Accumulated
+selectivity = 1.00 }"]
+optimizedSource2 --> optimizedProject1
+optimizedProject1 --> optimizedUDFProject0
+end
+
+subgraph physical["Physical Plan"]
+direction TB
+physicaldaft_local_execution::intermediate_ops::intermediate_op::IntermediateNode__daft_local_execution::intermediate_ops::udf::UdfOperator__0["Builtin UDF embed_image:
+Expr = embed_image-618665-0(col(0: __TruncateRootUDF_0-1-0__)) as embedding
+Passthrough Columns = [col(1: uid)]
+Properties = { concurrency = 12, max_retries = 3, on_error = raise, async =
+false, scalar = false }
+Resource request = { num_gpus = 0 }
+Stats = { Approx num rows = 18, Approx size bytes = 300.50 KiB, Accumulated
+selectivity = 1.00 }
+Batch Size = Range(0, 131072]
+"]
+physicaldaft_local_execution::intermediate_ops::intermediate_op::IntermediateNode__daft_local_execution::intermediate_ops::project::ProjectOperator__1["Project: to_mode(image_decode(col(1: image_bytes), lit('raise'),
+lit(PyObject(RGB))), lit(PyObject(RGB))) as __TruncateRootUDF_0-1-0__, col(0:
+uid)
+Stats = { Approx num rows = 18, Approx size bytes = 300.50 KiB, Accumulated
+selectivity = 1.00 }
+Batch Size = Range(0, 131072]
+"]
+physicaldaft_local_execution::sources::source::SourceNode2["In Memory Scan:
+Schema = uid#Utf8, image_bytes#Binary
+Size bytes = 307716
+Stats = { Approx num rows = 18, Approx size bytes = 300.50 KiB, Accumulated
+selectivity = 1.00 }
+Batch Size = Range(0, 131072]
+"]
+physicaldaft_local_execution::sources::source::SourceNode2 --> physicaldaft_local_execution::intermediate_ops::intermediate_op::IntermediateNode__daft_local_execution::intermediate_ops::project::ProjectOperator__1
+physicaldaft_local_execution::intermediate_ops::intermediate_op::IntermediateNode__daft_local_execution::intermediate_ops::project::ProjectOperator__1 --> physicaldaft_local_execution::intermediate_ops::intermediate_op::IntermediateNode__daft_local_execution::intermediate_ops::udf::UdfOperator__0
+end
+
+unoptimized --> optimized
+optimized --> physical
+```
