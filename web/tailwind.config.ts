@@ -33,14 +33,22 @@ const config: Config = {
           800: '#8a3700',
           900: '#5c2500',
         },
+        // Single cool tint borrowed from the reference's sky — used only
+        // for the nav-pill glass tint and faint hover halos. Not a primary.
+        sky: {
+          tint: '#dfeaf2',
+        },
       },
       fontFamily: {
-        display: ['var(--font-display)', 'Georgia', 'serif'],
+        // Display now sans-serif. Same Inter face as body, but used at large
+        // sizes with tightest tracking — the reference's geometric headline look.
+        display: ['var(--font-display)', 'Inter', 'system-ui', 'sans-serif'],
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       letterSpacing: {
         tightest: '-0.04em',
+        display: '-0.035em',
       },
       animation: {
         'fade-in': 'fadeIn 240ms ease-out',
