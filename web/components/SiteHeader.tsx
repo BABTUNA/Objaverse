@@ -1,110 +1,114 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { type ReactNode } from 'react';
+import NavPill, { type NavItem } from '@/components/ui/NavPill';
 
 type Props = {
   /** Optional slot rendered on the right of the header (search bar, stats, etc.). */
   right?: ReactNode;
   /** When the header sits over a Canvas, drop the bottom border so it blends. */
   floating?: boolean;
+  /** Drop sticky/border chrome — used when embedded inside the hero card surface. */
+  bare?: boolean;
   /** Overrides the brand-mark click. When set, the brand becomes a button. */
   onBrandClick?: () => void;
 };
 
-export default function SiteHeader({ right, floating = false, onBrandClick }: Props) {
-  const pathname = usePathname();
-  const onAtlas = pathname?.startsWith('/atlas');
+const NAV: NavItem[] = [
+  { href: '/', label: 'Search' },
+  { href: '/atlas', label: 'Atlas' },
+  { href: '/perf', label: 'Perf' },
+];
 
-  const brandInner = (
-    <>
+export default function SiteHeader({ right, floating = false, bare = false, onBrandClick }: Props) {
+  const brand = (
+    <span className="flex items-center gap-2.5">
       <Mark />
-      <span className="tracking-tight">objaverse</span>
-      <span className="text-ember-500">/</span>
-      <span className="font-sans text-xs uppercase tracking-[0.22em] text-ink-300">
-        {onAtlas ? 'latent atlas' : 'semantic search'}
+      <span className="font-display text-[15px] font-semibold tracking-tight text-ink-100">
+        objaverse
       </span>
-    </>
+    </span>
   );
 
-  const brandClass =
-    'flex items-center gap-2 font-display text-lg text-ink-100 hover:text-ember-400 transition-colors';
+  const brandClass = 'flex items-center transition-opacity hover:opacity-80';
 
   return (
     <header
       className={
         floating
           ? 'pointer-events-none absolute inset-x-0 top-0 z-30'
-          : 'sticky top-0 z-30 border-b border-ink-700/60 bg-ink-950/85 backdrop-blur-md'
+          : bare
+          ? 'relative z-30'
+          : 'sticky top-0 z-30 border-b border-ink-100/[0.06] bg-ink-950/70 backdrop-blur-md'
       }
     >
       <div
         className={
           floating
-            ? 'pointer-events-auto mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 md:px-6'
-            : 'mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 md:px-6'
+            ? 'pointer-events-auto mx-auto flex w-full max-w-7xl items-center gap-3 px-5 py-4 md:px-8'
+            : 'mx-auto flex w-full max-w-7xl items-center gap-3 px-5 py-4 md:px-8'
         }
       >
         {onBrandClick ? (
           <button onClick={onBrandClick} className={brandClass}>
-            {brandInner}
+            {brand}
           </button>
         ) : (
           <Link href="/" className={brandClass}>
-            {brandInner}
+            {brand}
           </Link>
         )}
 
-        <nav className="hidden sm:flex items-center gap-1 rounded-full border border-ink-700 bg-ink-900/60 p-0.5 text-[10px] font-mono uppercase tracking-[0.22em]">
-          <NavTab href="/" active={!onAtlas}>
-            search
-          </NavTab>
-          <NavTab href="/atlas" active={!!onAtlas}>
-            atlas
-          </NavTab>
-        </nav>
+        <div className="hidden flex-1 justify-center sm:flex">
+          <NavPill items={NAV} />
+        </div>
 
-        {right && <div className="ml-auto flex min-w-0 items-center gap-3">{right}</div>}
+        <div className="ml-auto flex min-w-0 items-center gap-3">
+          {right ?? <DefaultCTA />}
+        </div>
       </div>
     </header>
   );
 }
 
-function NavTab({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
+function DefaultCTA() {
+  // The reference's right-hand "Join" pill: same dark family as the primary
+  // CTA, just smaller, signaling this control belongs to the brand stack.
+  // Anchor element styled to mirror PillButton geometry — avoids nesting
+  // an interactive button inside an anchor.
   return (
-    <Link
-      href={href}
-      className={
-        active
-          ? 'rounded-full bg-ember-500/15 px-3 py-1 text-ember-300'
-          : 'rounded-full px-3 py-1 text-ink-400 hover:text-ink-100 transition-colors'
-      }
+    <a
+      href="https://github.com/Eventual-Inc/Daft"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group/pb relative inline-flex h-9 items-center gap-2 rounded-full bg-ink-100 pl-4 pr-1 text-[13px] font-medium tracking-tight text-ink-950 shadow-[0_8px_24px_-12px_rgba(22,19,16,0.45)] transition-all duration-200 hover:bg-ink-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-100/30"
     >
-      {children}
-    </Link>
+      <span>View on GitHub</span>
+      <span className="inline-grid h-7 w-7 place-items-center rounded-full bg-ink-950 text-ink-100 shadow-[0_2px_6px_-1px_rgba(22,19,16,0.4)] transition-transform duration-200 group-hover/pb:translate-x-0.5">
+        <ArrowRight />
+      </span>
+    </a>
+  );
+}
+
+function ArrowRight() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 12h12" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
   );
 }
 
 export function Mark() {
+  // Concentric disc — flat ink dot ringed by an ink-100 stroke. Same visual
+  // family as the inset arrow disc on the PillButton, so brand and CTA rhyme.
   return (
-    <span className="relative grid h-7 w-7 place-items-center rounded-md border border-ember-500/40 bg-ember-500/10">
-      <span className="absolute inset-0 rounded-md bg-ember-500/20 blur-md" aria-hidden />
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="#ff7a1a"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d="M12 2 3 7l9 5 9-5-9-5Z" />
-        <path d="m3 17 9 5 9-5" />
-        <path d="m3 12 9 5 9-5" />
-      </svg>
+    <span className="relative grid h-7 w-7 place-items-center rounded-full border border-ink-100/15 bg-ink-950">
+      <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-ink-100">
+        <span className="h-1.5 w-1.5 rounded-full bg-ink-950" />
+      </span>
     </span>
   );
 }
