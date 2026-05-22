@@ -129,26 +129,26 @@ function Landing({ onSubmit, backendUp }: { onSubmit: (q: string) => void; backe
         />
 
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-20 pt-6 md:pt-2">
-          <div className="w-full max-w-4xl text-center animate-rise-in">
-            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-ink-100/10 bg-white/55 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-ink-300 backdrop-blur-md">
+          <div className="w-full max-w-2xl text-center animate-rise-in">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-ink-100/10 bg-white/55 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-ink-300 backdrop-blur-md">
               <span className="h-1.5 w-1.5 rounded-full bg-ember-500 animate-pulse-slow" />
               <span>46,128 models indexed</span>
               <span className="text-ink-500">·</span>
               <span>powered by daft</span>
             </div>
 
-            <h1 className="font-display font-black tracking-[-0.04em] text-ink-100 text-balance leading-[0.92] text-[clamp(2.75rem,8vw,6.5rem)]">
+            <h1 className="font-display font-black tracking-[-0.035em] text-ink-100 text-balance leading-[1.02] text-[clamp(1.75rem,4vw,3rem)]">
               Search 3D by meaning,
               <br />
               not by filename.
             </h1>
 
-            <p className="mx-auto mt-7 max-w-xl text-balance text-base md:text-lg text-ink-300">
+            <p className="mx-auto mt-5 max-w-md text-balance text-sm md:text-base text-ink-400">
               Type what you imagine. We embed your words and surface the closest objects from a
               corpus of 46k 3D models.
             </p>
 
-            <div className="mt-10">
+            <div className="mt-8">
               <SearchBar onSubmit={onSubmit} />
             </div>
 
